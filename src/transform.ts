@@ -81,7 +81,6 @@ export function transformJS(
 
   const { filename = '' } = customFile || {};
   
-  
   const result = babel.transformSync(code, {
     plugins: [rewriteHPlugin(filename)],
   });
@@ -122,7 +121,7 @@ const rewriteHPlugin = (filename: string) => {
             const hSpecifier = path.node.specifiers.find(
               (specifier: any) =>
                 types.isImportSpecifier(specifier) &&
-                specifier.imported?.name === "h"
+                (specifier.imported as any).name === "h"
             );
   
             if (hSpecifier) {
