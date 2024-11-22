@@ -1,0 +1,43 @@
+{
+  "name": "vite-plugin-fast-to",
+  "version": "1.0.0",
+  "description": "A plugin for quickly locating the location of HTML source code on vue.",
+  "module": "dist/main.esm.js",
+  "type": "module",
+  "scripts": {
+    "dev": "rollup -c -w --format esm",
+    "build": "rollup -c",
+    "build:esm": "rollup -c --format esm",
+    "build:cjs": "rollup -c --format cjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/main.esm.js",
+      "require": "./dist/main.cjs.js"
+    }
+  },
+  "keywords": [
+    "vite",
+    "plugin",
+    "vue"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^12.1.1",
+    "minimist": "^1.2.8",
+    "rollup": "^4.27.3",
+    "tslib": "^2.8.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "dependencies": {
+    "@babel/core": "^7.26.0",
+    "@babel/parser": "^7.26.2",
+    "@babel/traverse": "^7.25.9",
+    "@babel/types": "^7.26.0",
+    "@vue/compiler-dom": "^3.5.13",
+    "magic-string": "^0.30.13"
+  }
+}
