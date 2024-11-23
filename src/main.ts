@@ -92,15 +92,7 @@ function pluginHTML(): Plugin<any> {
   return {
       name: 'vite-plugin-fast-to-html',
       enforce: 'post',
-      apply(_, config) {
-
-        /**
-         * 决定什么时候开启
-         * 仅仅在serve端开启 vite --mode serve-dev --host
-         */
-        const { command } = config
-        return command === 'serve'
-      },
+      apply: 'serve',
       configResolved(resolvedConfig) {
         // 存储最终解析的配置
         finalConfig = resolvedConfig
@@ -134,8 +126,9 @@ function pluginHTML(): Plugin<any> {
           }
           const init = () => {
             const event = (e) => {
-              const { metaKey, target } = e
-              if (metaKey) {
+              const { altKey, target } = e
+              console.log(e)
+              if (altKey) {
                 const path = findRecentNode(target).path
                 if (path) {
                   fetch('http://${ip}:${port}/__open-in-editor?file=' + path)
@@ -152,7 +145,7 @@ function pluginHTML(): Plugin<any> {
             const onkeydown = (e) => {
               const { key } = e; 
               state.key = key;
-              if(key === 'Meta') {
+              if(key === 'Alt') {
                 window.addEventListener('mousemove', onMousemove)
               }
             }

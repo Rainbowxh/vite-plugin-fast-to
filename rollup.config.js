@@ -31,6 +31,15 @@ const generateConfig = () => {
         sourcemap: true,
         format: 'cjs',
       }
+    },
+    umd: {
+      ...baseConfig,
+      output: {
+        name: 'MyLibrary',
+        file: 'dist/main.umd.js',
+        sourcemap: true,
+        format: 'umd',
+      }
     }
   }
 
