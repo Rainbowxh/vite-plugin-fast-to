@@ -58,11 +58,10 @@ function transformTs(code, id, opt, customFile) {
     const result = babel.transformSync(code, {
         filename: filename,
         presets: [
-            [babelPresetTypescript, {}], // 第二个参数可配置 preset 选项
+            [babelPresetTypescript, {}],
         ],
         plugins: [rewriteHPlugin(filename)],
     });
-    console.log(result.code);
     return result.code;
 }
 function transformJS(code, id, opt, customFile) {
