@@ -191,5 +191,12 @@ export default function fastToPlugin(): Plugin<any>[] {
     pluginTransform(),
     pluginVirtual(),
     pluginHTML(),
+    {
+      name: 'test',
+      renderChunk() {
+        console.log(arguments)
+        return null
+      }
+    }
   ];
 }

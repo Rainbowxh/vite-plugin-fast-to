@@ -1,6 +1,6 @@
 import { defineComponent } from 'vue';
 
-const compTsx = (): any => {
-  return <div></div>
+const compTsx = () => {
+  return <div>这是JSx测试</div>
 }
 export default compTsx

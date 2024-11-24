@@ -1,19 +1,30 @@
 import { CustomFile } from "./util";
-import compilerDom, { compile } from "@vue/compiler-dom";
+import compilerDom from "@vue/compiler-dom";
 import MagicString from "magic-string";
 //@ts-ignore
 import babel from "@babel/core";
+import jsx from "@vue/babel-plugin-jsx";
+
 //@ts-ignore
-import types, { file } from "@babel/types";
-import parser from "@babel/parser";
-//@ts-ignore
-import _traverse from "@babel/traverse";
-const traverse = _traverse.default;
+import types, { callExpression, file } from "@babel/types";
 //@ts-ignore
 import _babelPresetTypescript from "@babel/preset-typescript";
 const babelPresetTypescript = _babelPresetTypescript.default;
 
-import path from "path";
+//@ts-ignore
+import _babelPluginTransformTs from "@babel/plugin-transform-typescript";
+const babelPluginTransformTs = _babelPluginTransformTs.default;
+
+
+type VueAstNode = {
+  loc: {
+    start: {
+      offset: number;
+    };
+  }
+  tag: string;
+  tagType: compilerDom.ElementTypes;
+}
 
 export function transformVue(
   code: string,
@@ -23,29 +34,28 @@ export function transformVue(
 ) {
   const ast = compilerDom.parse(code, { comments: true });
   const ms = new MagicString(code);
+
+  function dealTag(type: 'element' | 'component', node: VueAstNode, ms: MagicString) {
+    const tagLength = node.tag.length || 0;
+    const pos = node.loc.start.offset + tagLength + 1;
+    const data = " " + generatePath(type, id, node);
+    ms.appendRight(pos, data);
+  }
+
   compilerDom.transform(ast, {
     nodeTransforms: [
       (node) => {
-        const { tag, tagType } = (node || {}) as {
-          tag: string;
-          tagType: compilerDom.ElementTypes;
-        };
+        const { tag, tagType } = (node || {}) as VueAstNode
 
         if (tagType === compilerDom.ElementTypes.ELEMENT) {
           if (tag === "template" || tag === "script" || tag === "style") {
             return;
           }
-          const tagLength = tag.length || 0;
-          const pos = node.loc.start.offset + tagLength + 1;
-          const data = " " + generatePath("element", id, node);
-          ms.appendRight(pos, data);
+          dealTag('element', node as VueAstNode, ms)
         }
 
         if (tagType === compilerDom.ElementTypes.COMPONENT) {
-          const tagLength = tag.length || 0;
-          const pos = node.loc.start.offset + tagLength + 1;
-          const data = " " + generatePath("component", id, node);
-          ms.appendRight(pos, data);
+          dealTag('component', node as VueAstNode, ms)
         }
       },
     ],
@@ -59,14 +69,36 @@ export function transformTsx(
   id: string,
   opt: any,
   customFile?: CustomFile
-) {}
+) {
+  const { filename = "" } = customFile || {};
+
+
+  const result = babel.transformSync(code, {
+    filename: filename,
+    presets: [babelPresetTypescript],
+    plugins: [
+      jsx,
+      rewriteCreateVnodePlugin(),
+    ]
+  })
+
+  console.log(result.code)
+
+
+  return code;
+}
 
 export function transformJsx(
   code: string,
   id: string,
   opt: any,
   customFile?: CustomFile
-) {}
+) {
+  const { filename = "" } = customFile || {};
+
+
+  return code;
+}
 
 export function transformTs(
   code: string,
@@ -107,7 +139,24 @@ export function transformJS(
   return result.code;
 }
 
-const rewriteHPlugin = (filename: string) => {
+
+
+function rewriteCreateVnodePlugin() {
+  return () => {
+    return {
+      visitor: {
+        ImportDeclaration(path: any) {
+          console.log(path.node.specifiers)
+        },
+        CallExpression(path: any) {
+
+        }
+      }
+    }
+  }
+}
+
+function rewriteHPlugin(filename: string) {
   return () => {
     let hName = "";
     return {
@@ -166,7 +215,7 @@ const rewriteHPlugin = (filename: string) => {
       },
     };
   };
-};
+}
 
 /**
  * Generate fast-to element path;

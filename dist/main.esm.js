@@ -1,9 +1,10 @@
 import compilerDom from '@vue/compiler-dom';
 import MagicString from 'magic-string';
 import babel from '@babel/core';
+import jsx from '@vue/babel-plugin-jsx';
 import types from '@babel/types';
-import _traverse from '@babel/traverse';
 import _babelPresetTypescript from '@babel/preset-typescript';
+import _babelPluginTransformTs from '@babel/plugin-transform-typescript';
 
 const parseSource = (source) => {
     const [filename] = source.split("?", 2);
@@ -18,11 +19,17 @@ const parseSource = (source) => {
     return result;
 };
 
-_traverse.default;
 const babelPresetTypescript = _babelPresetTypescript.default;
+_babelPluginTransformTs.default;
 function transformVue(code, id, opt, customFile) {
     const ast = compilerDom.parse(code, { comments: true });
     const ms = new MagicString(code);
+    function dealTag(type, node, ms) {
+        const tagLength = node.tag.length || 0;
+        const pos = node.loc.start.offset + tagLength + 1;
+        const data = " " + generatePath(type, id, node);
+        ms.appendRight(pos, data);
+    }
     compilerDom.transform(ast, {
         nodeTransforms: [
             (node) => {
@@ -31,16 +38,10 @@ function transformVue(code, id, opt, customFile) {
                     if (tag === "template" || tag === "script" || tag === "style") {
                         return;
                     }
-                    const tagLength = tag.length || 0;
-                    const pos = node.loc.start.offset + tagLength + 1;
-                    const data = " " + generatePath("element", id, node);
-                    ms.appendRight(pos, data);
+                    dealTag('element', node, ms);
                 }
                 if (tagType === compilerDom.ElementTypes.COMPONENT) {
-                    const tagLength = tag.length || 0;
-                    const pos = node.loc.start.offset + tagLength + 1;
-                    const data = " " + generatePath("component", id, node);
-                    ms.appendRight(pos, data);
+                    dealTag('component', node, ms);
                 }
             },
         ],
@@ -48,8 +49,22 @@ function transformVue(code, id, opt, customFile) {
     const result = ms.toString();
     return result;
 }
-function transformTsx(code, id, opt, customFile) { }
-function transformJsx(code, id, opt, customFile) { }
+function transformTsx(code, id, opt, customFile) {
+    const { filename = "" } = customFile || {};
+    const result = babel.transformSync(code, {
+        filename: filename,
+        presets: [babelPresetTypescript],
+        plugins: [
+            jsx,
+            rewriteCreateVnodePlugin(),
+        ]
+    });
+    console.log(result.code);
+    return code;
+}
+function transformJsx(code, id, opt, customFile) {
+    return code;
+}
 function transformTs(code, id, opt, customFile) {
     if (id.includes("node_modules"))
         return code;
@@ -73,7 +88,20 @@ function transformJS(code, id, opt, customFile) {
     });
     return result.code;
 }
-const rewriteHPlugin = (filename) => {
+function rewriteCreateVnodePlugin() {
+    return () => {
+        return {
+            visitor: {
+                ImportDeclaration(path) {
+                    console.log(path.node.specifiers);
+                },
+                CallExpression(path) {
+                }
+            }
+        };
+    };
+}
+function rewriteHPlugin(filename) {
     return () => {
         let hName = "";
         return {
@@ -119,7 +147,7 @@ const rewriteHPlugin = (filename) => {
             },
         };
     };
-};
+}
 /**
  * Generate fast-to element path;
  */
@@ -190,10 +218,10 @@ function pluginTransform() {
                 return transformTs(code, id, opt, customFile);
             }
             if (type === "jsx") {
-                return transformJsx();
+                return transformJsx(code);
             }
             if (type === "tsx") {
-                return transformTsx();
+                return transformTsx(code, id, opt, customFile);
             }
             return code;
         }
@@ -302,6 +330,13 @@ function fastToPlugin() {
         pluginTransform(),
         pluginVirtual(),
         pluginHTML(),
+        {
+            name: 'test',
+            renderChunk() {
+                console.log(arguments);
+                return null;
+            }
+        }
     ];
 }
 

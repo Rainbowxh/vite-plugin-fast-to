@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import vueJsx from '@vitejs/plugin-vue-jsx'
 import fastPlugin from "../dist/main.esm"
 
 export default defineConfig((params) => {
@@ -7,6 +8,7 @@ export default defineConfig((params) => {
   return {
     plugins: [
       vue(),
+      vueJsx(),
       fastPlugin()
     ],
     define: {},

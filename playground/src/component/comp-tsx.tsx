@@ -1,6 +1,6 @@
 import { defineComponent } from 'vue';
 
-const compTsx = (): any => {
+const compTsx = () => {
   return <div></div>
 }
 export default compTsx

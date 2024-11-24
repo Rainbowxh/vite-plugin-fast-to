@@ -16,6 +16,6 @@ export default defineComponent({
   setup(props) {
     // const { msg } = toRefs(props);
     const msg = props.msg;
-    return (): VNode  => h('div', 'this is a test')
+    return (): VNode  => h('div', 'Fast to ts file')
   }
 })

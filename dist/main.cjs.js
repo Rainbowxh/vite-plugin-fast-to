@@ -4,8 +4,7 @@ var compilerDom = require('@vue/compiler-dom');
 var MagicString = require('magic-string');
 var babel = require('@babel/core');
 var types = require('@babel/types');
-var _traverse = require('@babel/traverse');
-var path = require('path');
+var _babelPresetTypescript = require('@babel/preset-typescript');
 
 const parseSource = (source) => {
     const [filename] = source.split("?", 2);
@@ -20,10 +19,16 @@ const parseSource = (source) => {
     return result;
 };
 
-_traverse.default;
+const babelPresetTypescript = _babelPresetTypescript.default;
 function transformVue(code, id, opt, customFile) {
     const ast = compilerDom.parse(code, { comments: true });
     const ms = new MagicString(code);
+    function dealTag(type, node, ms) {
+        const tagLength = node.tag.length || 0;
+        const pos = node.loc.start.offset + tagLength + 1;
+        const data = " " + generatePath(type, id, node);
+        ms.appendRight(pos, data);
+    }
     compilerDom.transform(ast, {
         nodeTransforms: [
             (node) => {
@@ -32,16 +37,10 @@ function transformVue(code, id, opt, customFile) {
                     if (tag === "template" || tag === "script" || tag === "style") {
                         return;
                     }
-                    const tagLength = tag.length || 0;
-                    const pos = node.loc.start.offset + tagLength + 1;
-                    const data = ' ' + generatePath("element", id, node);
-                    ms.appendRight(pos, data);
+                    dealTag('element', node, ms);
                 }
                 if (tagType === compilerDom.ElementTypes.COMPONENT) {
-                    const tagLength = tag.length || 0;
-                    const pos = node.loc.start.offset + tagLength + 1;
-                    const data = ' ' + generatePath("component", id, node);
-                    ms.appendRight(pos, data);
+                    dealTag('component', node, ms);
                 }
             },
         ],
@@ -55,11 +54,14 @@ function transformTs(code, id, opt, customFile) {
     if (id.includes("node_modules"))
         return code;
     const { filename = "" } = customFile || {};
+    // 使用 transformSync
     const result = babel.transformSync(code, {
-        presets: [path.resolve("node_modules/@babel/preset-typescript")],
+        filename: filename,
+        presets: [
+            [babelPresetTypescript, {}],
+        ],
         plugins: [rewriteHPlugin(filename)],
     });
-    console.log(result.code);
     return result.code;
 }
 function transformJS(code, id, opt, customFile) {
@@ -71,9 +73,9 @@ function transformJS(code, id, opt, customFile) {
     });
     return result.code;
 }
-const rewriteHPlugin = (filename) => {
+function rewriteHPlugin(filename) {
     return () => {
-        let hName = '';
+        let hName = "";
         return {
             visitor: {
                 ImportDeclaration(path) {
@@ -99,7 +101,7 @@ const rewriteHPlugin = (filename) => {
                     if (callee.type === "Identifier" && callee.name === hName) {
                         // only choose function call
                         const scopeBinding = path.scope.getBinding(callee.name);
-                        if (scopeBinding && scopeBinding.kind !== 'module')
+                        if (scopeBinding && scopeBinding.kind !== "module")
                             return;
                         const line = path.node.loc.start.line;
                         const column = path.node.loc.start.column;
@@ -117,7 +119,7 @@ const rewriteHPlugin = (filename) => {
             },
         };
     };
-};
+}
 /**
  * Generate fast-to element path;
  */
@@ -174,7 +176,6 @@ function pluginTransform() {
     return {
         name: "fast-to-plugin",
         enforce: "pre",
-        apply: "serve",
         transform(code, id, opt) {
             const customFile = parseSource(id);
             const { type } = customFile;
@@ -194,6 +195,10 @@ function pluginTransform() {
                 return transformTsx();
             }
             return code;
+        },
+        renderChunk() {
+            console.log(arguments);
+            return null;
         }
     };
 }
