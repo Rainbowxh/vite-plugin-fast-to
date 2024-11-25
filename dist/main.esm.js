@@ -1,4 +1,4 @@
-import compilerDom from '@vue/compiler-dom';
+import * as compilerDom from '@vue/compiler-dom';
 import MagicString from 'magic-string';
 import babel from '@babel/core';
 import jsx from '@vue/babel-plugin-jsx';
@@ -18,6 +18,7 @@ const parseSource = (source) => {
     return result;
 };
 
+//@ts-ignore
 const babelPresetTypescript = _babelPresetTypescript.default;
 function transformVue(code, id, opt, customFile) {
     const ast = compilerDom.parse(code, { comments: true });
@@ -79,41 +80,47 @@ function transformTs(code, id, opt, customFile) {
 }
 function rewriteCreateVnodePlugin(filename) {
     return () => {
-        let createVNodeLocalName = "";
         return {
             visitor: {
                 CallExpression(path) {
-                    console.log("====", createVNodeLocalName);
-                    const { callee } = path.node;
-                    /**
-                     * `return <div></div> ` is transfer to `return _createVNode('div')`
-                     * It has no scopebinding because it is transferred by vueJsx node;
-                     * To avoid custom function like:
-                     *    function render() {
-                     *      function _createVNode() {}
-                     *      _createVNode();
-                     *      return <div></div>
-                     *    }
-                     */
-                    const scopeBinding = path.scope.getBinding(callee.name);
-                    if (scopeBinding)
-                        return;
-                    if (callee.type === "Identifier" &&
-                        callee.name.includes("_createVNode")) {
-                        const loc = path.container.loc;
-                        const { line, column } = loc.start || {};
-                        const info = `${filename}:${line}:${column}`;
-                        const arg = path.node.arguments;
-                        if (Array.isArray(arg) && arg.length > 1) {
-                            const props = arg[1];
-                            const newProperty = types.objectProperty(types.stringLiteral("fast-element"), types.stringLiteral(info));
-                            if (props.properties) {
-                                props.properties.push(newProperty);
+                    try {
+                        const { callee } = path.node;
+                        /**
+                         * `return <div></div> ` is transfer to `return _createVNode('div')`
+                         * It has no scopebinding because it is transferred by vueJsx node;
+                         * To avoid custom function like:
+                         *    function render() {
+                         *      function _createVNode() {}
+                         *      _createVNode();
+                         *      return <div></div>
+                         *    }
+                         */
+                        const scopeBinding = path.scope.getBinding(callee.name);
+                        if (scopeBinding)
+                            return;
+                        if (callee.type === "Identifier" &&
+                            callee.name.includes("_createVNode")) {
+                            const loc = callee.loc || path.container.loc || path?.container?.block?.[0]?.loc || path?.scope?.block?.loc;
+                            if (!loc) {
+                                return;
                             }
-                            else {
-                                props.properties = [newProperty];
+                            const { line, column } = loc.start || {};
+                            const info = `${filename}:${line}:${column}`;
+                            const arg = path.node.arguments;
+                            if (Array.isArray(arg) && arg.length > 1) {
+                                const props = arg[1];
+                                const newProperty = types.objectProperty(types.stringLiteral("fast-element"), types.stringLiteral(info));
+                                if (props.properties) {
+                                    props.properties.push(newProperty);
+                                }
+                                else {
+                                    props.properties = [newProperty];
+                                }
                             }
                         }
+                    }
+                    catch (err) {
+                        return;
                     }
                 },
             },
@@ -183,6 +190,8 @@ function generatePath(type, path, astNode) {
     const { line, column } = astNode.loc.start;
     return `fast-${type}="${path}:${line}:${column}"`;
 }
+
+const str = "function initBrowserScript() {\n  initKeyBoard();\n  initStyle();\n}\n\nfunction initKeyBoard() {\n  const opt = {\n    _status: '',\n    get status() {\n      return this._status;\n    },\n    set status(value) {\n      this._status = value;\n    },\n    metaKey: false,\n    listeners: [],\n    weakMap: new WeakMap(),\n    mention: {\n      dom: document.createElement('div'),\n      cleanup: []\n    }\n  }\n  Object.defineProperty(opt, '_status', {\n    value: '',\n    writable: true,\n    enumerable: false,\n    configurable: true\n  });\n  function onKeyDown(e) {\n    opt.status = 'keydown';\n    opt.metaKey = e.metaKey\n    if(opt.metaKey) {\n      onMouseMove(e)\n      window.addEventListener('mousemove', onMouseMove);\n      opt.listeners.push(() => window.removeEventListener('mousemove', onMouseMove))\n    }\n  }\n\n  function onMouseMove(e) {\n    if(opt.status !== 'keydown') return;\n\n    window.addEventListener('click', onMouseMoveClick, {capture: true});\n    opt.listeners.push(() => window.removeEventListener('click', onMouseMoveClick));\n\n    window.addEventListener('contextmenu', onMouseMoveContextmenu, {capture: true});\n    opt.listeners.push(() => window.removeEventListener('contextmenu', onMouseMoveContextmenu));\n\n    window.addEventListener('click', onCloseContextmenu);\n    opt.listeners.push(() => window.removeEventListener('click', onMouseMoveClick));\n  }\n\n  function collectInfo(e) {\n    let current = e.target;\n    let depth = 7;\n    let result = opt.weakMap.get(current) || {\n      all: [],\n      element: [],\n      component: [],\n    }\n    if(opt.weakMap.has(current)) {\n      result = opt.weakMap.get(current);\n    }else {\n      const _target = current\n      while(current && depth > 0) {\n        const attributes = current.attributes;\n        \n        if(attributes && attributes['fast-component']){\n          result.component.push(attributes['fast-component'].value)\n          result.all.push(attributes['fast-component'].value)\n        }\n        if(attributes && attributes['fast-element']){\n          if(result.component.length === 0) result.component.push(attributes['fast-element'].value)\n          result.element.push(attributes['fast-element'].value)\n          result.all.push(attributes['fast-element'].value)\n        }\n        current = current.parentNode;\n        depth--;  \n      }\n      opt.weakMap.set(_target, result)\n    }\n  }\n  \n  function onMouseMoveClick(e) {\n    if(opt.status !== 'keydown') return;\n    if(!opt.metaKey) return;\n    e.preventDefault();\n    e.stopPropagation();\n    \n    collectInfo(e)\n\n    const current = e.target;\n    const currentInfo = opt.weakMap.get(current);\n    const path = currentInfo.element[0];\n    openEditor(path)\n  }\n\n  function onMouseMoveContextmenu(e) {\n    opt.mention.dom.innerHTML = ''\n    opt.mention.cleanup.forEach(fn => fn())\n\n    if(opt.status !== 'keydown') return;\n    if(!opt.metaKey) return;\n    \n    e.preventDefault();\n    e.stopPropagation();\n\n    collectInfo(e)\n\n    const { all } = opt.weakMap.get(e.target) || {}\n    for(let i = 0; i < all.length; i++) {\n      const dom = document.createElement('div');\n      dom.innerText = all[i].slice(-30);\n      dom.style.margin = '5px';\n      dom.style.cursor = 'pointer';\n      const func = (e) => {\n        e.preventDefault();\n        e.stopPropagation()\n        openEditor(all[i]); \n      }\n      dom.addEventListener('click', func)\n      opt.mention.dom.appendChild(dom)\n      opt.mention.cleanup.push(() => dom.removeEventListener('click', func))\n    }\n\n    opt.mention.dom.style.display = 'block';\n    opt.mention.dom.style.left = e.pageX + 'px';\n    opt.mention.dom.style.top = e.pageY + 'px';\n    opt.mention.dom.style.position = 'absolute';\n    opt.mention.dom.style.zIndex = 10000;\n    opt.mention.dom.style.background = 'white';\n    opt.mention.dom.style.border = '1px solid #ccc';\n    opt.mention.dom.style.padding = '5px';\n    opt.mention.dom.style.borderRadius = '5px';\n\n    document.body.appendChild(opt.mention.dom)\n\n  }\n\n  function onCloseContextmenu(e) {\n    try {\n      document.body.removeChild(opt.mention.dom)\n    }catch(e) {}\n  }\n\n  function openEditor(path) {\n    fetch('http://localhost:__port__/__open-in-editor?file=' + path)\n  }\n\n  function onOtherEvent() {\n    opt.status = '';\n    opt.metaKey = false;\n    opt.listeners.forEach(fn => fn())\n  }\n  window.addEventListener('keydown', onKeyDown)\n  window.addEventListener('keyup', onOtherEvent)\n  window.addEventListener('mouseleave', onOtherEvent)\n  function onVisibilityChange() {\n    if(document.hidden) {\n      onOtherEvent();\n    }\n  }\n\n  window.addEventListener('visibilitychange', onVisibilityChange)\n  \n  return () => {\n    window.removeEventListener('keydown', onKeyDown)\n    window.removeEventListener('keyup', onOtherEvent)\n    window.removeEventListener('mouseleave', onOtherEvent)\n    window.removeEventListener('visibilitychange', onVisibilityChange)\n    opt.listeners.forEach(fn => fn())\n  }\n}\n\nfunction initStyle() {\n  const body = document.body;\n  if(!body) return;\n  const styleDom = document.createElement('style');\n  styleDom.innerHTML = `\n    .vite-fast-to-mask { position: relative; }\n    .vite-fast-to-mask::after { pointer-events: none; position: absolute; content: ''; left: -1px; right: -1px;bottom: -1px;top: -1px; border: 1px solid silver; background-color: rgba(192,192,192,.3); z-index: 10000; }\n  `\n  body.appendChild(styleDom);\n}\n\nfunction initPath() {}\n\ninitBrowserScript();\n";
 
 function pluginVirtual() {
     return {
@@ -256,91 +265,19 @@ function pluginTransform() {
     };
 }
 function pluginHTML() {
+    let port = '';
     return {
         name: 'vite-plugin-fast-to-html',
         enforce: 'post',
         apply: 'serve',
         configResolved(resolvedConfig) {
+            port = '' + resolvedConfig.server.port;
         },
         transformIndexHtml(html) {
-            //   const port = finalConfig.server.port
-            //   const htmlString = `
-            //   <style>
-            //     .vite-fast-to-mask { position: relative; }
-            //     .vite-fast-to-mask::after { pointer-events: none; position: absolute; content: ''; left: -1px; right: -1px;bottom: -1px;top: -1px; border: 1px solid silver; background-color: rgba(192,192,192,.3); z-index: 10000; }
-            //   </style>
-            //   <script>
-            //     const findRecentNode = (node) => {
-            //       let target = node
-            //       let maxCount = 7;
-            //       while (target && maxCount > 0) {
-            //         const path =
-            //           target.attributes && target.attributes['fast-element'] && target.attributes['fast-element'].nodeValue
-            //         if (path) {
-            //           return {
-            //             target,
-            //             path
-            //           }
-            //         }
-            //         target = target.parentNode
-            //         maxCount--
-            //       }
-            //       return {}
-            //     }
-            //     const init = () => {
-            //       const event = (e) => {
-            //         const { altKey, target } = e
-            //         console.log(e)
-            //         if (altKey) {
-            //           const path = findRecentNode(target).path
-            //           if (path) {
-            //             fetch('http://${ip}:${port}/__open-in-editor?file=' + path)
-            //           }
-            //           e.preventDefault()
-            //           e.stopPropagation()
-            //         }
-            //       }
-            //       window.addEventListener('click', event, { capture: true })
-            //       const state = {
-            //         key: '',
-            //         prev: null,
-            //       }
-            //       const onkeydown = (e) => {
-            //         const { key } = e; 
-            //         state.key = key;
-            //         if(key === 'Alt') {
-            //           window.addEventListener('mousemove', onMousemove)
-            //         }
-            //       }
-            //       const onkeyup = (e) => {
-            //         state.key = ''
-            //         window.removeEventListener('mousemove', onMousemove)
-            //         if(state.prev) {
-            //           state.prev.classList.remove('vite-fast-to-mask');
-            //         }
-            //       }
-            //       const onMousemove = (e) => {
-            //         const target = findRecentNode(e.target).target;
-            //         if(!target) return;
-            //         // 为了性能控考虑
-            //         if(target && target === state.prev) {
-            //           return;              
-            //         }
-            //         if(state.prev) {
-            //           state.prev.classList.remove('vite-fast-to-mask');
-            //         }
-            //         target.classList.add('vite-fast-to-mask')
-            //         state.prev = target
-            //       }
-            //       window.addEventListener('keydown', onkeydown, true)
-            //       window.addEventListener('keyup', onkeyup, true)
-            //       return () => window.removeEventListener('click', event)
-            //     }
-            //     const unmount = init()
-            //   </script>
-            // `
-            //   html = html.replace('</head>', `${htmlString}</head>`)
-            //   return html
+            let scriptContent = str.replace('__port__', port);
+            const htmlString = `<script>${scriptContent}</script>`;
+            html = html.replace('</head>', `${htmlString}</head>`);
+            return html;
         }
     };
 }
@@ -348,14 +285,7 @@ function fastToPlugin() {
     return [
         pluginTransform(),
         pluginVirtual(),
-        pluginHTML(),
-        {
-            name: 'test',
-            renderChunk() {
-                console.log(arguments);
-                return null;
-            }
-        }
+        pluginHTML()
     ];
 }
 

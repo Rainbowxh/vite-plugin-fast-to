@@ -9,11 +9,8 @@ export default defineComponent({
     },
   },
   setup(props) {
-    // const { msg } = toRefs(props);
-    const msg = props.msg;
     return () => {
-
-      return h('div',  [
+      return h('div', { class: 'comp-js' },  [
         h('div', 'Fast to js - h 2 parameter'),
         h('div', { color: 'red' }, 'Fast to js - h 3 parameter' ),
         h('div', { class: 'blue' }, [

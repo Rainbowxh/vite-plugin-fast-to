@@ -1,4 +1,4 @@
-function create() {
+function initBrowserScript() {
   initKeyBoard();
   initStyle();
 }
@@ -20,6 +20,12 @@ function initKeyBoard() {
       cleanup: []
     }
   }
+  Object.defineProperty(opt, '_status', {
+    value: '',
+    writable: true,
+    enumerable: false,
+    configurable: true
+  });
   function onKeyDown(e) {
     opt.status = 'keydown';
     opt.metaKey = e.metaKey
@@ -38,6 +44,9 @@ function initKeyBoard() {
 
     window.addEventListener('contextmenu', onMouseMoveContextmenu, {capture: true});
     opt.listeners.push(() => window.removeEventListener('contextmenu', onMouseMoveContextmenu));
+
+    window.addEventListener('click', onCloseContextmenu);
+    opt.listeners.push(() => window.removeEventListener('click', onMouseMoveClick));
   }
 
   function collectInfo(e) {
@@ -76,14 +85,13 @@ function initKeyBoard() {
     if(!opt.metaKey) return;
     e.preventDefault();
     e.stopPropagation();
-
+    
     collectInfo(e)
 
     const current = e.target;
     const currentInfo = opt.weakMap.get(current);
     const path = currentInfo.element[0];
-    console.log(e)
-    // openEditor(path)
+    openEditor(path)
   }
 
   function onMouseMoveContextmenu(e) {
@@ -101,24 +109,41 @@ function initKeyBoard() {
     const { all } = opt.weakMap.get(e.target) || {}
     for(let i = 0; i < all.length; i++) {
       const dom = document.createElement('div');
-      dom.innerText = all[i];
+      dom.innerText = all[i].slice(-30);
       dom.style.margin = '5px';
       dom.style.cursor = 'pointer';
-      const func = () => openEditor(all[i]); 
+      const func = (e) => {
+        e.preventDefault();
+        e.stopPropagation()
+        openEditor(all[i]); 
+      }
       dom.addEventListener('click', func)
       opt.mention.dom.appendChild(dom)
       opt.mention.cleanup.push(() => dom.removeEventListener('click', func))
     }
 
-    document.body.appendChild(opt.mention.dom)
     opt.mention.dom.style.display = 'block';
     opt.mention.dom.style.left = e.pageX + 'px';
     opt.mention.dom.style.top = e.pageY + 'px';
     opt.mention.dom.style.position = 'absolute';
+    opt.mention.dom.style.zIndex = 10000;
+    opt.mention.dom.style.background = 'white';
+    opt.mention.dom.style.border = '1px solid #ccc';
+    opt.mention.dom.style.padding = '5px';
+    opt.mention.dom.style.borderRadius = '5px';
+
+    document.body.appendChild(opt.mention.dom)
+
+  }
+
+  function onCloseContextmenu(e) {
+    try {
+      document.body.removeChild(opt.mention.dom)
+    }catch(e) {}
   }
 
   function openEditor(path) {
-    fetch('http://localhost:3154/__open-in-editor?file=' + path)
+    fetch('http://localhost:__port__/__open-in-editor?file=' + path)
   }
 
   function onOtherEvent() {
@@ -156,6 +181,7 @@ function initStyle() {
   `
   body.appendChild(styleDom);
 }
+
 function initPath() {}
 
-create();
+initBrowserScript();

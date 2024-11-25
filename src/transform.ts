@@ -1,5 +1,7 @@
 import { CustomFile } from "./util";
-import compilerDom from "@vue/compiler-dom";
+//@ts-ignore
+import * as compilerDom from "@vue/compiler-dom";
+
 import MagicString from "magic-string";
 //@ts-ignore
 import babel from "@babel/core";
@@ -119,51 +121,56 @@ export function transformTs(
 
 function rewriteCreateVnodePlugin(filename: string) {
   return () => {
-    let createVNodeLocalName = "";
     return {
       visitor: {
         CallExpression(path: any) {
-          console.log("====", createVNodeLocalName);
-          const { callee } = path.node;
-          /**
-           * `return <div></div> ` is transfer to `return _createVNode('div')`
-           * It has no scopebinding because it is transferred by vueJsx node;
-           * To avoid custom function like:
-           *    function render() {
-           *      function _createVNode() {}
-           *      _createVNode();
-           *      return <div></div>
-           *    }
-           */
-          const scopeBinding = path.scope.getBinding(callee.name);
-
-          if (scopeBinding) return;
-
-          if (
-            callee.type === "Identifier" &&
-            callee.name.includes("_createVNode")
-          ) {
-            const loc = path.container.loc;
-
-            const { line, column } = loc.start || {};
-
-            const info = `${filename}:${line}:${column}`;
-
-            const arg = path.node.arguments;
-
-            if (Array.isArray(arg) && arg.length > 1) {
-              const props = arg[1];
-              const newProperty = types.objectProperty(
-                types.stringLiteral("fast-element"),
-                types.stringLiteral(info)
-              );
-              if (props.properties) {
-                props.properties.push(newProperty);
-              } else {
-                props.properties = [newProperty];
+          try {
+            const { callee } = path.node;
+            /**
+             * `return <div></div> ` is transfer to `return _createVNode('div')`
+             * It has no scopebinding because it is transferred by vueJsx node;
+             * To avoid custom function like:
+             *    function render() {
+             *      function _createVNode() {}
+             *      _createVNode();
+             *      return <div></div>
+             *    }
+             */
+            const scopeBinding = path.scope.getBinding(callee.name);
+  
+            if (scopeBinding) return;
+  
+            if (
+              callee.type === "Identifier" &&
+              callee.name.includes("_createVNode")
+            ) {
+              const loc = callee.loc || path.container.loc || path?.container?.block?.[0]?.loc || path?.scope?.block?.loc;
+              if(!loc) {
+                return;
+              }
+              const { line, column } = loc.start || {};
+  
+              const info = `${filename}:${line}:${column}`;
+  
+              const arg = path.node.arguments;
+              if (Array.isArray(arg) && arg.length > 1) {
+       
+                const props = arg[1];
+                const newProperty = types.objectProperty(
+                  types.stringLiteral("fast-element"),
+                  types.stringLiteral(info)
+                );
+                if (props.properties) {
+                  props.properties.push(newProperty);
+                } else {
+                  props.properties = [newProperty];
+                }
               }
             }
+          }catch(err) {
+            return;
           }
+          
         },
       },
     };
