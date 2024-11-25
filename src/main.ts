@@ -20,7 +20,7 @@ function pluginVirtual(): Plugin<any> {
       }
     },
     load(id: string) {
-      if( id.includes("virtual-mode")) {
+      if(id === 'virtual-mode-rewriteH') {
         return `
         export default function (h, info, ...args) {
           const l = args.length;
@@ -50,6 +50,8 @@ function pluginVirtual(): Plugin<any> {
         }
         `
       }
+
+
     }
   }
 }
@@ -100,87 +102,87 @@ function pluginHTML(): Plugin<any> {
         ip = 'localhost';
       },
       transformIndexHtml(html) {
-        const port = finalConfig.server.port
-        const htmlString = `
-        <style>
-          .vite-fast-to-mask { position: relative; }
-          .vite-fast-to-mask::after { pointer-events: none; position: absolute; content: ''; left: -1px; right: -1px;bottom: -1px;top: -1px; border: 1px solid silver; background-color: rgba(192,192,192,.3); z-index: 10000; }
-        </style>
-        <script>
-          const findRecentNode = (node) => {
-            let target = node
-            let maxCount = 7;
-            while (target && maxCount > 0) {
-              const path =
-                target.attributes && target.attributes['fast-element'] && target.attributes['fast-element'].nodeValue
-              if (path) {
-                return {
-                  target,
-                  path
-                }
-              }
-              target = target.parentNode
-              maxCount--
-            }
-            return {}
-          }
-          const init = () => {
-            const event = (e) => {
-              const { altKey, target } = e
-              console.log(e)
-              if (altKey) {
-                const path = findRecentNode(target).path
-                if (path) {
-                  fetch('http://${ip}:${port}/__open-in-editor?file=' + path)
-                }
-                e.preventDefault()
-                e.stopPropagation()
-              }
-            }
-            window.addEventListener('click', event, { capture: true })
-            const state = {
-              key: '',
-              prev: null,
-            }
-            const onkeydown = (e) => {
-              const { key } = e; 
-              state.key = key;
-              if(key === 'Alt') {
-                window.addEventListener('mousemove', onMousemove)
-              }
-            }
-            const onkeyup = (e) => {
-              state.key = ''
-              window.removeEventListener('mousemove', onMousemove)
-              if(state.prev) {
-                state.prev.classList.remove('vite-fast-to-mask');
-              }
-            }
-            const onMousemove = (e) => {
+      //   const port = finalConfig.server.port
+      //   const htmlString = `
+      //   <style>
+      //     .vite-fast-to-mask { position: relative; }
+      //     .vite-fast-to-mask::after { pointer-events: none; position: absolute; content: ''; left: -1px; right: -1px;bottom: -1px;top: -1px; border: 1px solid silver; background-color: rgba(192,192,192,.3); z-index: 10000; }
+      //   </style>
+      //   <script>
+      //     const findRecentNode = (node) => {
+      //       let target = node
+      //       let maxCount = 7;
+      //       while (target && maxCount > 0) {
+      //         const path =
+      //           target.attributes && target.attributes['fast-element'] && target.attributes['fast-element'].nodeValue
+      //         if (path) {
+      //           return {
+      //             target,
+      //             path
+      //           }
+      //         }
+      //         target = target.parentNode
+      //         maxCount--
+      //       }
+      //       return {}
+      //     }
+      //     const init = () => {
+      //       const event = (e) => {
+      //         const { altKey, target } = e
+      //         console.log(e)
+      //         if (altKey) {
+      //           const path = findRecentNode(target).path
+      //           if (path) {
+      //             fetch('http://${ip}:${port}/__open-in-editor?file=' + path)
+      //           }
+      //           e.preventDefault()
+      //           e.stopPropagation()
+      //         }
+      //       }
+      //       window.addEventListener('click', event, { capture: true })
+      //       const state = {
+      //         key: '',
+      //         prev: null,
+      //       }
+      //       const onkeydown = (e) => {
+      //         const { key } = e; 
+      //         state.key = key;
+      //         if(key === 'Alt') {
+      //           window.addEventListener('mousemove', onMousemove)
+      //         }
+      //       }
+      //       const onkeyup = (e) => {
+      //         state.key = ''
+      //         window.removeEventListener('mousemove', onMousemove)
+      //         if(state.prev) {
+      //           state.prev.classList.remove('vite-fast-to-mask');
+      //         }
+      //       }
+      //       const onMousemove = (e) => {
 
 
-              const target = findRecentNode(e.target).target;
+      //         const target = findRecentNode(e.target).target;
 
-              if(!target) return;
-              // 为了性能控考虑
-              if(target && target === state.prev) {
-                return;              
-              }
-              if(state.prev) {
-                state.prev.classList.remove('vite-fast-to-mask');
-              }
-              target.classList.add('vite-fast-to-mask')
-              state.prev = target
-            }
-            window.addEventListener('keydown', onkeydown, true)
-            window.addEventListener('keyup', onkeyup, true)
-            return () => window.removeEventListener('click', event)
-          }
-          const unmount = init()
-        </script>
-      `
-        html = html.replace('</head>', `${htmlString}</head>`)
-        return html
+      //         if(!target) return;
+      //         // 为了性能控考虑
+      //         if(target && target === state.prev) {
+      //           return;              
+      //         }
+      //         if(state.prev) {
+      //           state.prev.classList.remove('vite-fast-to-mask');
+      //         }
+      //         target.classList.add('vite-fast-to-mask')
+      //         state.prev = target
+      //       }
+      //       window.addEventListener('keydown', onkeydown, true)
+      //       window.addEventListener('keyup', onkeyup, true)
+      //       return () => window.removeEventListener('click', event)
+      //     }
+      //     const unmount = init()
+      //   </script>
+      // `
+      //   html = html.replace('</head>', `${htmlString}</head>`)
+      //   return html
       }
   }
 }

@@ -11,13 +11,16 @@ export default defineComponent({
   setup(props) {
     // const { msg } = toRefs(props);
     const msg = props.msg;
-    return () => [
-      h('div', 'Fast to js - h 2 parameter'),
-      h('div', { color: 'red' }, 'Fast to js - h 3 parameter' ),
-      h('div', { class: 'blue' }, [
-          h('div', 'Fast to js - children1'),
-          h('div', 'Fast to js - children2'),
-      ]),
-    ]
+    return () => {
+
+      return h('div',  [
+        h('div', 'Fast to js - h 2 parameter'),
+        h('div', { color: 'red' }, 'Fast to js - h 3 parameter' ),
+        h('div', { class: 'blue' }, [
+            h('div', 'Fast to js - children1'),
+            h('div', 'Fast to js - children2'),
+        ]),
+      ])
+    }
   }
 })

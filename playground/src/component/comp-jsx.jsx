@@ -1,6 +1,4 @@
-import { defineComponent } from 'vue';
-
 const compTsx = () => {
-  return <div>这是JSx测试</div>
+  return <div class="class-jsx">Fast to jsx</div>
 }
 export default compTsx

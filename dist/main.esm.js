@@ -4,7 +4,6 @@ import babel from '@babel/core';
 import jsx from '@vue/babel-plugin-jsx';
 import types from '@babel/types';
 import _babelPresetTypescript from '@babel/preset-typescript';
-import _babelPluginTransformTs from '@babel/plugin-transform-typescript';
 
 const parseSource = (source) => {
     const [filename] = source.split("?", 2);
@@ -20,7 +19,6 @@ const parseSource = (source) => {
 };
 
 const babelPresetTypescript = _babelPresetTypescript.default;
-_babelPluginTransformTs.default;
 function transformVue(code, id, opt, customFile) {
     const ast = compilerDom.parse(code, { comments: true });
     const ms = new MagicString(code);
@@ -38,10 +36,10 @@ function transformVue(code, id, opt, customFile) {
                     if (tag === "template" || tag === "script" || tag === "style") {
                         return;
                     }
-                    dealTag('element', node, ms);
+                    dealTag("element", node, ms);
                 }
                 if (tagType === compilerDom.ElementTypes.COMPONENT) {
-                    dealTag('component', node, ms);
+                    dealTag("component", node, ms);
                 }
             },
         ],
@@ -54,16 +52,18 @@ function transformTsx(code, id, opt, customFile) {
     const result = babel.transformSync(code, {
         filename: filename,
         presets: [babelPresetTypescript],
-        plugins: [
-            jsx,
-            rewriteCreateVnodePlugin(),
-        ]
+        plugins: [jsx, rewriteCreateVnodePlugin(filename)],
     });
-    console.log(result.code);
-    return code;
+    return result.code;
 }
 function transformJsx(code, id, opt, customFile) {
-    return code;
+    const { filename = "" } = customFile || {};
+    const result = babel.transformSync(code, {
+        filename: filename,
+        presets: [babelPresetTypescript],
+        plugins: [jsx, rewriteCreateVnodePlugin(filename)],
+    });
+    return result.code;
 }
 function transformTs(code, id, opt, customFile) {
     if (id.includes("node_modules"))
@@ -72,12 +72,53 @@ function transformTs(code, id, opt, customFile) {
     // 使用 transformSync
     const result = babel.transformSync(code, {
         filename: filename,
-        presets: [
-            [babelPresetTypescript, {}],
-        ],
+        presets: [[babelPresetTypescript, {}]],
         plugins: [rewriteHPlugin(filename)],
     });
     return result.code;
+}
+function rewriteCreateVnodePlugin(filename) {
+    return () => {
+        let createVNodeLocalName = "";
+        return {
+            visitor: {
+                CallExpression(path) {
+                    console.log("====", createVNodeLocalName);
+                    const { callee } = path.node;
+                    /**
+                     * `return <div></div> ` is transfer to `return _createVNode('div')`
+                     * It has no scopebinding because it is transferred by vueJsx node;
+                     * To avoid custom function like:
+                     *    function render() {
+                     *      function _createVNode() {}
+                     *      _createVNode();
+                     *      return <div></div>
+                     *    }
+                     */
+                    const scopeBinding = path.scope.getBinding(callee.name);
+                    if (scopeBinding)
+                        return;
+                    if (callee.type === "Identifier" &&
+                        callee.name.includes("_createVNode")) {
+                        const loc = path.container.loc;
+                        const { line, column } = loc.start || {};
+                        const info = `${filename}:${line}:${column}`;
+                        const arg = path.node.arguments;
+                        if (Array.isArray(arg) && arg.length > 1) {
+                            const props = arg[1];
+                            const newProperty = types.objectProperty(types.stringLiteral("fast-element"), types.stringLiteral(info));
+                            if (props.properties) {
+                                props.properties.push(newProperty);
+                            }
+                            else {
+                                props.properties = [newProperty];
+                            }
+                        }
+                    }
+                },
+            },
+        };
+    };
 }
 function transformJS(code, id, opt, customFile) {
     if (id.includes("node_modules"))
@@ -87,19 +128,6 @@ function transformJS(code, id, opt, customFile) {
         plugins: [rewriteHPlugin(filename)],
     });
     return result.code;
-}
-function rewriteCreateVnodePlugin() {
-    return () => {
-        return {
-            visitor: {
-                ImportDeclaration(path) {
-                    console.log(path.node.specifiers);
-                },
-                CallExpression(path) {
-                }
-            }
-        };
-    };
 }
 function rewriteHPlugin(filename) {
     return () => {
@@ -114,12 +142,12 @@ function rewriteHPlugin(filename) {
                         specifier.imported.name === "h");
                     if (hSpecifier) {
                         hName = hSpecifier.local.name;
-                        const importWrapperH = types.importDeclaration([types.importDefaultSpecifier(types.identifier("wrapperH"))], types.stringLiteral("virtual-mode"));
+                        const importWrapperH = types.importDeclaration([types.importDefaultSpecifier(types.identifier("wrapperH"))], types.stringLiteral("virtual-mode-rewriteH"));
                         /**
                          * 增强 h 函数, 使h函数能够将当前的信息传递给 wrapperH
                          * import { h } from "vue"
                          *
-                         * import wrapperH from "virtual-mode";
+                         * import wrapperH from "virtual-mode-rewriteH";
                          */
                         path.insertAfter(importWrapperH);
                     }
@@ -167,7 +195,7 @@ function pluginVirtual() {
             }
         },
         load(id) {
-            if (id.includes("virtual-mode")) {
+            if (id === 'virtual-mode-rewriteH') {
                 return `
         export default function (h, info, ...args) {
           const l = args.length;
@@ -218,7 +246,7 @@ function pluginTransform() {
                 return transformTs(code, id, opt, customFile);
             }
             if (type === "jsx") {
-                return transformJsx(code);
+                return transformJsx(code, id, opt, customFile);
             }
             if (type === "tsx") {
                 return transformTsx(code, id, opt, customFile);
@@ -228,100 +256,91 @@ function pluginTransform() {
     };
 }
 function pluginHTML() {
-    let finalConfig = null;
-    let ip = 'localhost';
     return {
         name: 'vite-plugin-fast-to-html',
         enforce: 'post',
         apply: 'serve',
         configResolved(resolvedConfig) {
-            // 存储最终解析的配置
-            finalConfig = resolvedConfig;
-            // ip = getLocalIPV4Address() || ip;
-            ip = 'localhost';
         },
         transformIndexHtml(html) {
-            const port = finalConfig.server.port;
-            const htmlString = `
-        <style>
-          .vite-fast-to-mask { position: relative; }
-          .vite-fast-to-mask::after { pointer-events: none; position: absolute; content: ''; left: -1px; right: -1px;bottom: -1px;top: -1px; border: 1px solid silver; background-color: rgba(192,192,192,.3); z-index: 10000; }
-        </style>
-        <script>
-          const findRecentNode = (node) => {
-            let target = node
-            let maxCount = 7;
-            while (target && maxCount > 0) {
-              const path =
-                target.attributes && target.attributes['fast-element'] && target.attributes['fast-element'].nodeValue
-              if (path) {
-                return {
-                  target,
-                  path
-                }
-              }
-              target = target.parentNode
-              maxCount--
-            }
-            return {}
-          }
-          const init = () => {
-            const event = (e) => {
-              const { altKey, target } = e
-              console.log(e)
-              if (altKey) {
-                const path = findRecentNode(target).path
-                if (path) {
-                  fetch('http://${ip}:${port}/__open-in-editor?file=' + path)
-                }
-                e.preventDefault()
-                e.stopPropagation()
-              }
-            }
-            window.addEventListener('click', event, { capture: true })
-            const state = {
-              key: '',
-              prev: null,
-            }
-            const onkeydown = (e) => {
-              const { key } = e; 
-              state.key = key;
-              if(key === 'Alt') {
-                window.addEventListener('mousemove', onMousemove)
-              }
-            }
-            const onkeyup = (e) => {
-              state.key = ''
-              window.removeEventListener('mousemove', onMousemove)
-              if(state.prev) {
-                state.prev.classList.remove('vite-fast-to-mask');
-              }
-            }
-            const onMousemove = (e) => {
-
-
-              const target = findRecentNode(e.target).target;
-
-              if(!target) return;
-              // 为了性能控考虑
-              if(target && target === state.prev) {
-                return;              
-              }
-              if(state.prev) {
-                state.prev.classList.remove('vite-fast-to-mask');
-              }
-              target.classList.add('vite-fast-to-mask')
-              state.prev = target
-            }
-            window.addEventListener('keydown', onkeydown, true)
-            window.addEventListener('keyup', onkeyup, true)
-            return () => window.removeEventListener('click', event)
-          }
-          const unmount = init()
-        </script>
-      `;
-            html = html.replace('</head>', `${htmlString}</head>`);
-            return html;
+            //   const port = finalConfig.server.port
+            //   const htmlString = `
+            //   <style>
+            //     .vite-fast-to-mask { position: relative; }
+            //     .vite-fast-to-mask::after { pointer-events: none; position: absolute; content: ''; left: -1px; right: -1px;bottom: -1px;top: -1px; border: 1px solid silver; background-color: rgba(192,192,192,.3); z-index: 10000; }
+            //   </style>
+            //   <script>
+            //     const findRecentNode = (node) => {
+            //       let target = node
+            //       let maxCount = 7;
+            //       while (target && maxCount > 0) {
+            //         const path =
+            //           target.attributes && target.attributes['fast-element'] && target.attributes['fast-element'].nodeValue
+            //         if (path) {
+            //           return {
+            //             target,
+            //             path
+            //           }
+            //         }
+            //         target = target.parentNode
+            //         maxCount--
+            //       }
+            //       return {}
+            //     }
+            //     const init = () => {
+            //       const event = (e) => {
+            //         const { altKey, target } = e
+            //         console.log(e)
+            //         if (altKey) {
+            //           const path = findRecentNode(target).path
+            //           if (path) {
+            //             fetch('http://${ip}:${port}/__open-in-editor?file=' + path)
+            //           }
+            //           e.preventDefault()
+            //           e.stopPropagation()
+            //         }
+            //       }
+            //       window.addEventListener('click', event, { capture: true })
+            //       const state = {
+            //         key: '',
+            //         prev: null,
+            //       }
+            //       const onkeydown = (e) => {
+            //         const { key } = e; 
+            //         state.key = key;
+            //         if(key === 'Alt') {
+            //           window.addEventListener('mousemove', onMousemove)
+            //         }
+            //       }
+            //       const onkeyup = (e) => {
+            //         state.key = ''
+            //         window.removeEventListener('mousemove', onMousemove)
+            //         if(state.prev) {
+            //           state.prev.classList.remove('vite-fast-to-mask');
+            //         }
+            //       }
+            //       const onMousemove = (e) => {
+            //         const target = findRecentNode(e.target).target;
+            //         if(!target) return;
+            //         // 为了性能控考虑
+            //         if(target && target === state.prev) {
+            //           return;              
+            //         }
+            //         if(state.prev) {
+            //           state.prev.classList.remove('vite-fast-to-mask');
+            //         }
+            //         target.classList.add('vite-fast-to-mask')
+            //         state.prev = target
+            //       }
+            //       window.addEventListener('keydown', onkeydown, true)
+            //       window.addEventListener('keyup', onkeyup, true)
+            //       return () => window.removeEventListener('click', event)
+            //     }
+            //     const unmount = init()
+            //   </script>
+            // `
+            //   html = html.replace('</head>', `${htmlString}</head>`)
+            //   return html
         }
     };
 }

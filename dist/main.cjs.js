@@ -3,8 +3,10 @@
 var compilerDom = require('@vue/compiler-dom');
 var MagicString = require('magic-string');
 var babel = require('@babel/core');
+var jsx = require('@vue/babel-plugin-jsx');
 var types = require('@babel/types');
 var _babelPresetTypescript = require('@babel/preset-typescript');
+var _babelPluginTransformTs = require('@babel/plugin-transform-typescript');
 
 const parseSource = (source) => {
     const [filename] = source.split("?", 2);
@@ -20,6 +22,7 @@ const parseSource = (source) => {
 };
 
 const babelPresetTypescript = _babelPresetTypescript.default;
+_babelPluginTransformTs.default;
 function transformVue(code, id, opt, customFile) {
     const ast = compilerDom.parse(code, { comments: true });
     const ms = new MagicString(code);
@@ -48,8 +51,22 @@ function transformVue(code, id, opt, customFile) {
     const result = ms.toString();
     return result;
 }
-function transformTsx(code, id, opt, customFile) { }
-function transformJsx(code, id, opt, customFile) { }
+function transformTsx(code, id, opt, customFile) {
+    const { filename = "" } = customFile || {};
+    const result = babel.transformSync(code, {
+        filename: filename,
+        presets: [babelPresetTypescript],
+        plugins: [
+            jsx,
+            rewriteCreateVnodePlugin(),
+        ]
+    });
+    console.log(result.code);
+    return code;
+}
+function transformJsx(code, id, opt, customFile) {
+    return code;
+}
 function transformTs(code, id, opt, customFile) {
     if (id.includes("node_modules"))
         return code;
@@ -72,6 +89,19 @@ function transformJS(code, id, opt, customFile) {
         plugins: [rewriteHPlugin(filename)],
     });
     return result.code;
+}
+function rewriteCreateVnodePlugin() {
+    return () => {
+        return {
+            visitor: {
+                ImportDeclaration(path) {
+                    console.log(path.node.specifiers);
+                },
+                CallExpression(path) {
+                }
+            }
+        };
+    };
 }
 function rewriteHPlugin(filename) {
     return () => {
@@ -176,6 +206,7 @@ function pluginTransform() {
     return {
         name: "fast-to-plugin",
         enforce: "pre",
+        apply: "serve",
         transform(code, id, opt) {
             const customFile = parseSource(id);
             const { type } = customFile;
@@ -189,16 +220,12 @@ function pluginTransform() {
                 return transformTs(code, id, opt, customFile);
             }
             if (type === "jsx") {
-                return transformJsx();
+                return transformJsx(code);
             }
             if (type === "tsx") {
-                return transformTsx();
+                return transformTsx(code, id, opt, customFile);
             }
             return code;
-        },
-        renderChunk() {
-            console.log(arguments);
-            return null;
         }
     };
 }
@@ -305,6 +332,13 @@ function fastToPlugin() {
         pluginTransform(),
         pluginVirtual(),
         pluginHTML(),
+        {
+            name: 'test',
+            renderChunk() {
+                console.log(arguments);
+                return null;
+            }
+        }
     ];
 }
 

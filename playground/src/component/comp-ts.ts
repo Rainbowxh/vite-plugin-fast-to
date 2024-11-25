@@ -1,10 +1,5 @@
 import { defineComponent, h, VNode } from 'vue';
 
-const test: string = 'this is a test'
-
-const wonderY = () => {}
-
-
 export default defineComponent({
   name: 'CompJs',
   props: {

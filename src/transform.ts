@@ -3,28 +3,25 @@ import compilerDom from "@vue/compiler-dom";
 import MagicString from "magic-string";
 //@ts-ignore
 import babel from "@babel/core";
+
+//@ts-ignore
 import jsx from "@vue/babel-plugin-jsx";
 
 //@ts-ignore
-import types, { callExpression, file } from "@babel/types";
+import types from "@babel/types";
 //@ts-ignore
 import _babelPresetTypescript from "@babel/preset-typescript";
 const babelPresetTypescript = _babelPresetTypescript.default;
-
-//@ts-ignore
-import _babelPluginTransformTs from "@babel/plugin-transform-typescript";
-const babelPluginTransformTs = _babelPluginTransformTs.default;
-
 
 type VueAstNode = {
   loc: {
     start: {
       offset: number;
     };
-  }
+  };
   tag: string;
   tagType: compilerDom.ElementTypes;
-}
+};
 
 export function transformVue(
   code: string,
@@ -35,7 +32,11 @@ export function transformVue(
   const ast = compilerDom.parse(code, { comments: true });
   const ms = new MagicString(code);
 
-  function dealTag(type: 'element' | 'component', node: VueAstNode, ms: MagicString) {
+  function dealTag(
+    type: "element" | "component",
+    node: VueAstNode,
+    ms: MagicString
+  ) {
     const tagLength = node.tag.length || 0;
     const pos = node.loc.start.offset + tagLength + 1;
     const data = " " + generatePath(type, id, node);
@@ -45,17 +46,17 @@ export function transformVue(
   compilerDom.transform(ast, {
     nodeTransforms: [
       (node) => {
-        const { tag, tagType } = (node || {}) as VueAstNode
+        const { tag, tagType } = (node || {}) as VueAstNode;
 
         if (tagType === compilerDom.ElementTypes.ELEMENT) {
           if (tag === "template" || tag === "script" || tag === "style") {
             return;
           }
-          dealTag('element', node as VueAstNode, ms)
+          dealTag("element", node as VueAstNode, ms);
         }
 
         if (tagType === compilerDom.ElementTypes.COMPONENT) {
-          dealTag('component', node as VueAstNode, ms)
+          dealTag("component", node as VueAstNode, ms);
         }
       },
     ],
@@ -72,20 +73,13 @@ export function transformTsx(
 ) {
   const { filename = "" } = customFile || {};
 
-
   const result = babel.transformSync(code, {
     filename: filename,
     presets: [babelPresetTypescript],
-    plugins: [
-      jsx,
-      rewriteCreateVnodePlugin(),
-    ]
-  })
+    plugins: [jsx, rewriteCreateVnodePlugin(filename)],
+  });
 
-  console.log(result.code)
-
-
-  return code;
+  return result.code;
 }
 
 export function transformJsx(
@@ -95,9 +89,12 @@ export function transformJsx(
   customFile?: CustomFile
 ) {
   const { filename = "" } = customFile || {};
-
-
-  return code;
+  const result = babel.transformSync(code, {
+    filename: filename,
+    presets: [babelPresetTypescript],
+    plugins: [jsx, rewriteCreateVnodePlugin(filename)],
+  });
+  return result.code;
 }
 
 export function transformTs(
@@ -113,13 +110,64 @@ export function transformTs(
   // 使用 transformSync
   const result = babel.transformSync(code, {
     filename: filename,
-    presets: [
-      [babelPresetTypescript, {}],
-    ],
+    presets: [[babelPresetTypescript, {}]],
     plugins: [rewriteHPlugin(filename)],
   });
 
   return result.code;
+}
+
+function rewriteCreateVnodePlugin(filename: string) {
+  return () => {
+    let createVNodeLocalName = "";
+    return {
+      visitor: {
+        CallExpression(path: any) {
+          console.log("====", createVNodeLocalName);
+          const { callee } = path.node;
+          /**
+           * `return <div></div> ` is transfer to `return _createVNode('div')`
+           * It has no scopebinding because it is transferred by vueJsx node;
+           * To avoid custom function like:
+           *    function render() {
+           *      function _createVNode() {}
+           *      _createVNode();
+           *      return <div></div>
+           *    }
+           */
+          const scopeBinding = path.scope.getBinding(callee.name);
+
+          if (scopeBinding) return;
+
+          if (
+            callee.type === "Identifier" &&
+            callee.name.includes("_createVNode")
+          ) {
+            const loc = path.container.loc;
+
+            const { line, column } = loc.start || {};
+
+            const info = `${filename}:${line}:${column}`;
+
+            const arg = path.node.arguments;
+
+            if (Array.isArray(arg) && arg.length > 1) {
+              const props = arg[1];
+              const newProperty = types.objectProperty(
+                types.stringLiteral("fast-element"),
+                types.stringLiteral(info)
+              );
+              if (props.properties) {
+                props.properties.push(newProperty);
+              } else {
+                props.properties = [newProperty];
+              }
+            }
+          }
+        },
+      },
+    };
+  };
 }
 
 export function transformJS(
@@ -131,29 +179,11 @@ export function transformJS(
   if (id.includes("node_modules")) return code;
 
   const { filename = "" } = customFile || {};
-
   const result = babel.transformSync(code, {
     plugins: [rewriteHPlugin(filename)],
   });
 
   return result.code;
-}
-
-
-
-function rewriteCreateVnodePlugin() {
-  return () => {
-    return {
-      visitor: {
-        ImportDeclaration(path: any) {
-          console.log(path.node.specifiers)
-        },
-        CallExpression(path: any) {
-
-        }
-      }
-    }
-  }
 }
 
 function rewriteHPlugin(filename: string) {
@@ -175,13 +205,13 @@ function rewriteHPlugin(filename: string) {
             hName = (hSpecifier.local as any).name;
             const importWrapperH = types.importDeclaration(
               [types.importDefaultSpecifier(types.identifier("wrapperH"))],
-              types.stringLiteral("virtual-mode")
+              types.stringLiteral("virtual-mode-rewriteH")
             );
             /**
              * 增强 h 函数, 使h函数能够将当前的信息传递给 wrapperH
              * import { h } from "vue"
              *
-             * import wrapperH from "virtual-mode";
+             * import wrapperH from "virtual-mode-rewriteH";
              */
             path.insertAfter(importWrapperH);
           }
@@ -198,7 +228,6 @@ function rewriteHPlugin(filename: string) {
             const column = path.node.loc.start.column;
 
             const info = `${filename}:${line}:${column}`;
-
             const newArg = types.objectExpression([
               types.objectProperty(
                 types.stringLiteral("fast-element"),
